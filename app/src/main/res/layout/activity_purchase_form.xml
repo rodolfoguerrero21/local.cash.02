@@ -31,6 +31,7 @@
             app:tint="@color/local_cash_teal" />
 
         <TextView
+            android:id="@+id/purchaseFormTitle"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
@@ -322,6 +323,14 @@
                         android:text="@string/no_contacts_selected"
                         android:textColor="@color/local_cash_text_secondary"
                         android:textSize="13sp" />
+
+                    <LinearLayout
+                        android:id="@+id/participantContributionsContainer"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:orientation="vertical"
+                        android:visibility="gone" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
@@ -356,6 +365,17 @@
                         android:text="@string/total_zero"
                         android:textColor="@color/local_cash_teal_dark"
                         android:textSize="26sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/purchaseAccountAmountText"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:gravity="end"
+                        android:text="@string/account_charge_zero"
+                        android:textColor="@color/local_cash_text_secondary"
+                        android:textSize="14sp"
                         android:textStyle="bold" />
 
                     <com.google.android.material.button.MaterialButton

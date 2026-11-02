@@ -13,6 +13,7 @@ import androidx.core.view.WindowInsetsCompat;
 import com.example.clase.Database.DatabaseHelper;
 import com.example.clase.modelo.Compra;
 import com.example.clase.ui.UiUtils;
+import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
 import java.util.List;
@@ -59,10 +60,31 @@ public class PurchasesActivity extends AppCompatActivity {
             if (compra.getParticipantes() > 0) {
                 detail += " · " + compra.getParticipantes() + " participantes";
             }
-            UiUtils.addCard(this, itemsContainer, compra.getDescripcion(), detail,
-                    UiUtils.money(compra.getTotal()), getString(R.string.delete),
-                    view -> confirmDelete(compra));
+            detail += " · " + getString(
+                    R.string.account_contribution_detail,
+                    UiUtils.money(compra.getMontoCuenta()));
+            MaterialCardView card;
+            if (compra.isProgramada()) {
+                card = UiUtils.addCard(this, itemsContainer, compra.getDescripcion(), detail,
+                        UiUtils.money(compra.getTotal()), getString(R.string.edit),
+                        view -> editPurchase(compra), getString(R.string.delete),
+                        view -> confirmDelete(compra));
+            } else {
+                card = UiUtils.addCard(this, itemsContainer, compra.getDescripcion(), detail,
+                        UiUtils.money(compra.getTotal()), getString(R.string.delete),
+                        view -> confirmDelete(compra));
+            }
+            if (compra.isProgramada()) {
+                card.setCardBackgroundColor(getColor(R.color.purchase_future_pale));
+                card.setStrokeColor(getColor(R.color.purchase_future_border));
+            }
         }
+    }
+
+    private void editPurchase(Compra compra) {
+        Intent intent = new Intent(this, PurchaseFormActivity.class);
+        intent.putExtra(PurchaseFormActivity.EXTRA_PURCHASE_ID, compra.getId());
+        startActivity(intent);
     }
 
     private void confirmDelete(Compra compra) {

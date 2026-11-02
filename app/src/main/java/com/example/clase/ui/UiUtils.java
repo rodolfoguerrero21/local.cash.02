@@ -39,6 +39,21 @@ public final class UiUtils {
             String action,
             View.OnClickListener actionListener
     ) {
+        return addCard(context, container, title, detail, trailing,
+                null, null, action, actionListener);
+    }
+
+    public static MaterialCardView addCard(
+            Context context,
+            LinearLayout container,
+            String title,
+            String detail,
+            String trailing,
+            String primaryAction,
+            View.OnClickListener primaryActionListener,
+            String secondaryAction,
+            View.OnClickListener secondaryActionListener
+    ) {
         MaterialCardView card = new MaterialCardView(context);
         card.setCardBackgroundColor(ContextCompat.getColor(context, R.color.local_cash_surface));
         card.setRadius(dp(context, 18));
@@ -90,23 +105,42 @@ public final class UiUtils {
             content.addView(detailView, detailParams);
         }
 
-        if (action != null && actionListener != null) {
-            MaterialButton button = new MaterialButton(context, null,
-                    com.google.android.material.R.attr.materialButtonOutlinedStyle);
-            button.setText(action);
-            button.setTextColor(ContextCompat.getColor(context, R.color.local_cash_teal));
-            button.setOnClickListener(actionListener);
-            LinearLayout.LayoutParams buttonParams = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
+        if ((primaryAction != null && primaryActionListener != null)
+                || (secondaryAction != null && secondaryActionListener != null)) {
+            LinearLayout actions = new LinearLayout(context);
+            actions.setOrientation(LinearLayout.HORIZONTAL);
+            actions.setGravity(android.view.Gravity.END);
+            if (primaryAction != null && primaryActionListener != null) {
+                actions.addView(actionButton(context, primaryAction, primaryActionListener));
+            }
+            if (secondaryAction != null && secondaryActionListener != null) {
+                actions.addView(actionButton(context, secondaryAction, secondaryActionListener));
+            }
+            LinearLayout.LayoutParams actionsParams = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT);
-            buttonParams.gravity = android.view.Gravity.END;
-            buttonParams.topMargin = dp(context, 8);
-            content.addView(button, buttonParams);
+            actionsParams.topMargin = dp(context, 8);
+            content.addView(actions, actionsParams);
         }
 
         card.addView(content);
         container.addView(card);
         return card;
+    }
+
+    private static MaterialButton actionButton(Context context, String label,
+                                               View.OnClickListener listener) {
+        MaterialButton button = new MaterialButton(context, null,
+                com.google.android.material.R.attr.materialButtonOutlinedStyle);
+        button.setText(label);
+        button.setTextColor(ContextCompat.getColor(context, R.color.local_cash_teal));
+        button.setOnClickListener(listener);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT);
+        params.setMarginStart(dp(context, 8));
+        button.setLayoutParams(params);
+        return button;
     }
 
     public static int dp(Context context, int value) {

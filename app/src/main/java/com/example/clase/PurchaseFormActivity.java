@@ -19,6 +19,7 @@ import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 
 import com.example.clase.Database.DatabaseHelper;
+import com.example.clase.modelo.Compra;
 import com.example.clase.modelo.Contacto;
 import com.example.clase.modelo.Cuenta;
 import com.example.clase.modelo.ProductoCompra;
@@ -29,9 +30,13 @@ import com.google.android.material.textfield.TextInputLayout;
 
 import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public class PurchaseFormActivity extends AppCompatActivity {
+
+    public static final String EXTRA_PURCHASE_ID = "purchase_id";
 
     private DatabaseHelper database;
     private TextInputLayout descriptionLayout;
@@ -40,13 +45,19 @@ public class PurchaseFormActivity extends AppCompatActivity {
     private Spinner categorySpinner;
     private CheckBox scheduledCheckBox;
     private LinearLayout itemsContainer;
+    private LinearLayout participantContributionsContainer;
     private TextView contactsText;
     private TextView totalText;
+    private TextView accountAmountText;
     private com.google.android.material.button.MaterialButton dateButton;
     private List<Cuenta> accounts;
     private List<Contacto> contacts;
     private boolean[] selectedContacts;
+    private final Map<Long, TextInputEditText> contributionInputs = new LinkedHashMap<>();
+    private final Map<Long, TextInputLayout> contributionLayouts = new LinkedHashMap<>();
+    private final Map<Long, String> contributionValues = new LinkedHashMap<>();
     private long selectedDate = System.currentTimeMillis();
+    private long editingPurchaseId = -1;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -64,8 +75,10 @@ public class PurchaseFormActivity extends AppCompatActivity {
         categorySpinner = findViewById(R.id.purchaseCategorySpinner);
         scheduledCheckBox = findViewById(R.id.scheduledPurchaseCheckBox);
         itemsContainer = findViewById(R.id.purchaseItemsContainer);
+        participantContributionsContainer = findViewById(R.id.participantContributionsContainer);
         contactsText = findViewById(R.id.selectedContactsText);
         totalText = findViewById(R.id.purchaseTotalText);
+        accountAmountText = findViewById(R.id.purchaseAccountAmountText);
         dateButton = findViewById(R.id.purchaseDateButton);
 
         List<String> accountOptions = new ArrayList<>();
@@ -89,14 +102,29 @@ public class PurchaseFormActivity extends AppCompatActivity {
         findViewById(R.id.savePurchaseButton).setOnClickListener(view -> savePurchase());
         dateButton.setOnClickListener(view -> selectDate());
 
-        updateDateButton();
-        addItemRow();
+        editingPurchaseId = getIntent().getLongExtra(EXTRA_PURCHASE_ID, -1);
+        if (editingPurchaseId == -1) {
+            updateDateButton();
+            addItemRow();
+        } else {
+            loadPurchaseForEditing();
+        }
     }
 
     private void addItemRow() {
+        addItemRow(null);
+    }
+
+    private void addItemRow(ProductoCompra product) {
         View row = getLayoutInflater().inflate(R.layout.item_purchase_input, itemsContainer, false);
+        TextInputEditText nameInput = row.findViewById(R.id.itemNameInput);
         TextInputEditText quantityInput = row.findViewById(R.id.itemQuantityInput);
         TextInputEditText priceInput = row.findViewById(R.id.itemPriceInput);
+        if (product != null) {
+            nameInput.setText(product.getNombre());
+            quantityInput.setText(String.valueOf(product.getCantidad()));
+            priceInput.setText(editableNumber(product.getPrecioUnitario()));
+        }
         TextWatcher watcher = new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence text, int start, int count, int after) { }
             @Override public void onTextChanged(CharSequence text, int start, int before, int count) { updateTotal(); }
@@ -115,6 +143,57 @@ public class PurchaseFormActivity extends AppCompatActivity {
         });
         itemsContainer.addView(row);
         updateTotal();
+    }
+
+    private void loadPurchaseForEditing() {
+        Compra purchase = database.getCompra(editingPurchaseId);
+        if (purchase == null) {
+            finish();
+            return;
+        }
+
+        ((TextView) findViewById(R.id.purchaseFormTitle)).setText(R.string.edit_future_purchase);
+        ((com.google.android.material.button.MaterialButton) findViewById(R.id.savePurchaseButton))
+                .setText(R.string.update_purchase);
+        descriptionInput.setText(purchase.getDescripcion());
+        selectedDate = purchase.getFecha();
+        scheduledCheckBox.setChecked(purchase.isProgramada());
+        selectAccount(purchase.getCuentaId());
+        selectCategory(purchase.getCategoria());
+        updateDateButton();
+
+        itemsContainer.removeAllViews();
+        List<ProductoCompra> products = database.getProductosCompra(editingPurchaseId);
+        for (ProductoCompra product : products) addItemRow(product);
+        if (products.isEmpty()) addItemRow();
+
+        Map<Long, Double> contributions = database.getAportesCompra(editingPurchaseId);
+        for (int index = 0; index < contacts.size(); index++) {
+            Double contribution = contributions.get(contacts.get(index).getId());
+            if (contribution == null) continue;
+            selectedContacts[index] = true;
+            contributionValues.put(contacts.get(index).getId(), editableNumber(contribution));
+        }
+        updateContactsText();
+    }
+
+    private void selectAccount(Long accountId) {
+        if (accountId == null) return;
+        for (int index = 0; index < accounts.size(); index++) {
+            if (accounts.get(index).getId() == accountId) {
+                accountSpinner.setSelection(index);
+                return;
+            }
+        }
+    }
+
+    private void selectCategory(String category) {
+        for (int index = 0; index < categorySpinner.getCount(); index++) {
+            if (category.equals(categorySpinner.getItemAtPosition(index).toString())) {
+                categorySpinner.setSelection(index);
+                return;
+            }
+        }
     }
 
     private void selectDate() {
@@ -140,12 +219,16 @@ public class PurchaseFormActivity extends AppCompatActivity {
         }
         String[] names = new String[contacts.size()];
         for (int index = 0; index < contacts.size(); index++) names[index] = contacts.get(index).getNombre();
+        boolean[] pendingSelection = selectedContacts.clone();
         new MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.select_contacts)
-                .setMultiChoiceItems(names, selectedContacts,
-                        (dialog, which, checked) -> selectedContacts[which] = checked)
+                .setMultiChoiceItems(names, pendingSelection,
+                        (dialog, which, checked) -> pendingSelection[which] = checked)
                 .setNegativeButton(R.string.cancel, null)
-                .setPositiveButton(R.string.save, (dialog, which) -> updateContactsText())
+                .setPositiveButton(R.string.save, (dialog, which) -> {
+                    selectedContacts = pendingSelection;
+                    updateContactsText();
+                })
                 .show();
     }
 
@@ -157,10 +240,55 @@ public class PurchaseFormActivity extends AppCompatActivity {
         contactsText.setText(names.isEmpty()
                 ? getString(R.string.no_contacts_selected)
                 : android.text.TextUtils.join(", ", names));
+        renderContributionInputs();
+    }
+
+    private void renderContributionInputs() {
+        for (Map.Entry<Long, TextInputEditText> entry : contributionInputs.entrySet()) {
+            contributionValues.put(entry.getKey(), textOf(entry.getValue()));
+        }
+        participantContributionsContainer.removeAllViews();
+        contributionInputs.clear();
+        contributionLayouts.clear();
+
+        boolean hasParticipants = false;
+        for (int index = 0; index < contacts.size(); index++) {
+            if (!selectedContacts[index]) continue;
+            hasParticipants = true;
+            Contacto contact = contacts.get(index);
+            View row = getLayoutInflater().inflate(
+                    R.layout.item_participant_contribution,
+                    participantContributionsContainer,
+                    false);
+            ((TextView) row.findViewById(R.id.participantNameText)).setText(contact.getNombre());
+            TextInputLayout amountLayout = row.findViewById(R.id.participantContributionLayout);
+            TextInputEditText amountInput = row.findViewById(R.id.participantContributionInput);
+            String previousValue = contributionValues.get(contact.getId());
+            if (previousValue != null) amountInput.setText(previousValue);
+            amountInput.addTextChangedListener(new TextWatcher() {
+                @Override public void beforeTextChanged(CharSequence text, int start, int count, int after) { }
+                @Override public void onTextChanged(CharSequence text, int start, int before, int count) {
+                    amountLayout.setError(null);
+                    contributionValues.put(contact.getId(), text.toString());
+                    updateTotal();
+                }
+                @Override public void afterTextChanged(Editable editable) { }
+            });
+            contributionInputs.put(contact.getId(), amountInput);
+            contributionLayouts.put(contact.getId(), amountLayout);
+            participantContributionsContainer.addView(row);
+        }
+        participantContributionsContainer.setVisibility(hasParticipants ? View.VISIBLE : View.GONE);
+        updateTotal();
     }
 
     private void updateTotal() {
-        totalText.setText(getString(R.string.total_format, UiUtils.money(calculateTotal())));
+        double total = calculateTotal();
+        double accountAmount = Math.max(0, total - calculateParticipantContributions());
+        totalText.setText(getString(R.string.total_format, UiUtils.money(total)));
+        accountAmountText.setText(accounts.isEmpty()
+                ? getString(R.string.no_account_charge)
+                : getString(R.string.account_charge_format, UiUtils.money(accountAmount)));
     }
 
     private double calculateTotal() {
@@ -169,6 +297,14 @@ public class PurchaseFormActivity extends AppCompatActivity {
             View row = itemsContainer.getChildAt(index);
             total += parseDouble((TextInputEditText) row.findViewById(R.id.itemQuantityInput))
                     * parseDouble((TextInputEditText) row.findViewById(R.id.itemPriceInput));
+        }
+        return total;
+    }
+
+    private double calculateParticipantContributions() {
+        double total = 0;
+        for (TextInputEditText input : contributionInputs.values()) {
+            total += parseDouble(input);
         }
         return total;
     }
@@ -200,20 +336,49 @@ public class PurchaseFormActivity extends AppCompatActivity {
             products.add(new ProductoCompra(name, quantity, price));
         }
 
-        List<Long> participants = new ArrayList<>();
+        Map<Long, Double> participantContributions = new LinkedHashMap<>();
+        double totalContributions = 0;
         for (int index = 0; index < contacts.size(); index++) {
-            if (selectedContacts[index]) participants.add(contacts.get(index).getId());
+            if (!selectedContacts[index]) continue;
+            long contactId = contacts.get(index).getId();
+            double contribution = parseDouble(contributionInputs.get(contactId));
+            if (contribution <= 0) {
+                contributionLayouts.get(contactId)
+                        .setError(getString(R.string.participant_contribution_required));
+                return;
+            }
+            participantContributions.put(contactId, contribution);
+            totalContributions += contribution;
+        }
+        double purchaseTotal = 0;
+        for (ProductoCompra product : products) purchaseTotal += product.getSubtotal();
+        if (totalContributions > purchaseTotal + 0.01) {
+            Toast.makeText(this, R.string.contributions_exceed_total, Toast.LENGTH_LONG).show();
+            return;
         }
         Long accountId = accounts.isEmpty()
                 ? null
                 : accounts.get(accountSpinner.getSelectedItemPosition()).getId();
         String category = categorySpinner.getSelectedItem().toString();
-        long result = database.insertCompra(description, category, selectedDate,
-                scheduledCheckBox.isChecked(), accountId, products, participants);
-        if (result != -1) {
-            Toast.makeText(this, R.string.purchase_saved, Toast.LENGTH_SHORT).show();
+        boolean saved = editingPurchaseId == -1
+                ? database.insertCompra(description, category, selectedDate,
+                        scheduledCheckBox.isChecked(), accountId, products,
+                        participantContributions) != -1
+                : database.updateCompra(editingPurchaseId, description, category, selectedDate,
+                        scheduledCheckBox.isChecked(), accountId, products,
+                        participantContributions);
+        if (saved) {
+            Toast.makeText(this, editingPurchaseId == -1
+                    ? R.string.purchase_saved
+                    : R.string.purchase_updated, Toast.LENGTH_SHORT).show();
             finish();
         }
+    }
+
+    private String editableNumber(double value) {
+        return value == Math.rint(value)
+                ? String.valueOf((long) value)
+                : String.valueOf(value);
     }
 
     private String textOf(TextInputEditText input) {

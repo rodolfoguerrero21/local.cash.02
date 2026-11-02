@@ -9,10 +9,12 @@ Local Cash es una aplicación Android nativa desarrollada en Java para administr
 - Registro de ingresos y egresos asociados a una cuenta.
 - Ubicación opcional en los movimientos financieros.
 - Registro de compras con uno o más productos o servicios.
-- Compras realizadas o programadas para una fecha futura.
+- Compras realizadas o programadas para una fecha futura, descontadas inmediatamente del saldo disponible.
 - Clasificación de compras por alimentación, transporte, estudios o gastos personales.
 - Asociación de contactos a compras compartidas.
-- División equitativa del monto y seguimiento de deudas pagadas o pendientes.
+- Aportes personalizados por participante en compras compartidas.
+- Descuento automático de la diferencia entre el total y los aportes de los participantes.
+- Listado de compras compartidas con el nombre y aporte de cada participante.
 - Resumen de presupuesto, total gastado, saldo disponible y gastos por categoría.
 - Mapa interactivo con MapLibre, ubicación del dispositivo y puntos personalizados.
 - Creación de puntos manteniendo presionado el mapa, asignación de nombres y eliminación posterior.
@@ -111,4 +113,4 @@ El proyecto incluye pruebas unitarias y una prueba instrumentada del flujo finan
 app/src/androidTest/java/com/example/clase/LocalCashDatabaseTest.java
 ```
 
-Esta prueba comprueba cuentas, movimientos, compras, categorías, deudas y puntos del mapa utilizando una base SQLite temporal.
+Estas pruebas comprueban cuentas, movimientos, compras futuras, aportes personalizados, categorías, saldos compartidos y puntos del mapa utilizando una base SQLite temporal.

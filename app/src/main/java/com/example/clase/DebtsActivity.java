@@ -53,14 +53,11 @@ public class DebtsActivity extends AppCompatActivity {
         emptyStateText.setText(R.string.no_debts);
         emptyStateText.setVisibility(debts.isEmpty() ? View.VISIBLE : View.GONE);
         for (Deuda debt : debts) {
-            String detail = debt.getCompra() + " · " +
-                    getString(debt.isPagada() ? R.string.paid : R.string.pending);
-            String action = getString(debt.isPagada() ? R.string.mark_pending : R.string.mark_paid);
-            UiUtils.addCard(this, itemsContainer, debt.getContacto(), detail,
-                    UiUtils.money(debt.getMonto()), action, view -> {
-                        database.setDeudaPagada(debt.getId(), !debt.isPagada());
-                        loadDebts();
-                    });
+            String detail = getString(
+                    R.string.participant_contribution_detail,
+                    debt.getContacto());
+            UiUtils.addCard(this, itemsContainer, debt.getCompra(), detail,
+                    UiUtils.money(debt.getMonto()), null, null);
         }
     }
 

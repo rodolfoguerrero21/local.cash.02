@@ -370,7 +370,9 @@
                     android:layout_height="52dp"
                     android:layout_marginStart="4dp"
                     android:layout_weight="1"
+                    android:maxLines="2"
                     android:text="@string/debts"
+                    android:textSize="12sp"
                     app:cornerRadius="15dp" />
             </LinearLayout>
 
@@ -432,6 +434,7 @@
                                 android:textStyle="bold" />
 
                             <TextView
+                                android:id="@+id/recentPurchaseDetail1"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:layout_marginTop="3dp"
@@ -487,6 +490,7 @@
                                 android:textStyle="bold" />
 
                             <TextView
+                                android:id="@+id/recentPurchaseDetail2"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:layout_marginTop="3dp"
@@ -543,6 +547,7 @@
                                 android:textStyle="bold" />
 
                             <TextView
+                                android:id="@+id/recentPurchaseDetail3"
                                 android:layout_width="wrap_content"
                                 android:layout_height="wrap_content"
                                 android:layout_marginTop="3dp"

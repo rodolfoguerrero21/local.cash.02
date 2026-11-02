@@ -26,7 +26,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     public static final String TIPO_EGRESO = "EGRESO";
 
     private static final String DATABASE_NAME = "localcash.db";
-    private static final int DATABASE_VERSION = 4;
+    private static final int DATABASE_VERSION = 5;
 
     public DatabaseHelper(Context context) {
         this(context, DATABASE_NAME);
@@ -53,6 +53,11 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             db.execSQL("ALTER TABLE compras ADD COLUMN categoria TEXT NOT NULL " +
                     "DEFAULT 'Gastos Personales / Estilo de Vida'");
         }
+        if (oldVersion < 5) {
+            db.execSQL("ALTER TABLE compras ADD COLUMN monto_cuenta REAL NOT NULL DEFAULT 0");
+            db.execSQL("UPDATE compras SET monto_cuenta=" +
+                    "CASE WHEN programada=0 THEN total ELSE 0 END");
+        }
         createSchema(db);
     }
 
@@ -69,7 +74,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         db.execSQL("CREATE TABLE IF NOT EXISTS compras (" +
                 "id INTEGER PRIMARY KEY AUTOINCREMENT, descripcion TEXT NOT NULL, " +
                 "fecha INTEGER NOT NULL, programada INTEGER NOT NULL DEFAULT 0, " +
-                "cuenta_id INTEGER, total REAL NOT NULL, categoria TEXT NOT NULL, " +
+                "cuenta_id INTEGER, total REAL NOT NULL, monto_cuenta REAL NOT NULL DEFAULT 0, " +
+                "categoria TEXT NOT NULL, " +
                 "FOREIGN KEY(cuenta_id) REFERENCES cuentas(id) ON DELETE RESTRICT)");
         db.execSQL("CREATE TABLE IF NOT EXISTS productos_compra (" +
                 "id INTEGER PRIMARY KEY AUTOINCREMENT, compra_id INTEGER NOT NULL, " +
@@ -225,50 +231,24 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
     public long insertCompra(String descripcion, String categoria, long fecha,
                              boolean programada, Long cuentaId,
-                             List<ProductoCompra> productos, List<Long> participantes) {
-        double total = 0;
-        for (ProductoCompra producto : productos) total += producto.getSubtotal();
+                             List<ProductoCompra> productos, Map<Long, Double> aportesParticipantes) {
+        double total = calculatePurchaseTotal(productos);
+        double totalAportes = calculateContributions(aportesParticipantes);
+        if (total <= 0 || totalAportes < 0 || totalAportes > total + 0.01) return -1;
+        double montoCuenta = cuentaId == null ? 0 : Math.max(0, total - totalAportes);
 
         SQLiteDatabase db = getWritableDatabase();
         db.beginTransaction();
         try {
-            ContentValues purchaseValues = new ContentValues();
-            purchaseValues.put("descripcion", descripcion);
-            purchaseValues.put("fecha", fecha);
-            purchaseValues.put("programada", programada ? 1 : 0);
-            purchaseValues.put("categoria", categoria);
-            if (cuentaId == null) purchaseValues.putNull("cuenta_id");
-            else purchaseValues.put("cuenta_id", cuentaId);
-            purchaseValues.put("total", total);
+            ContentValues purchaseValues = purchaseValues(
+                    descripcion, categoria, fecha, programada, cuentaId, total, montoCuenta);
             long compraId = db.insert("compras", null, purchaseValues);
             if (compraId == -1) return -1;
 
-            for (ProductoCompra producto : productos) {
-                ContentValues itemValues = new ContentValues();
-                itemValues.put("compra_id", compraId);
-                itemValues.put("nombre", producto.getNombre());
-                itemValues.put("cantidad", producto.getCantidad());
-                itemValues.put("precio_unitario", producto.getPrecioUnitario());
-                if (db.insert("productos_compra", null, itemValues) == -1) return -1;
-            }
-
-            if (!participantes.isEmpty()) {
-                double share = total / participantes.size();
-                for (long contactoId : participantes) {
-                    ContentValues debtValues = new ContentValues();
-                    debtValues.put("compra_id", compraId);
-                    debtValues.put("contacto_id", contactoId);
-                    debtValues.put("monto", share);
-                    debtValues.put("pagada", 0);
-                    if (db.insert("deudas", null, debtValues) == -1) return -1;
-                }
-            }
-
-            if (!programada && cuentaId != null) {
-                if (insertMovimientoInternal(db, cuentaId, TIPO_EGRESO, total,
-                        "Compra: " + descripcion, fecha, null, null, compraId) == -1) return -1;
-                adjustBalance(db, cuentaId, -total);
-            }
+            if (!insertPurchaseItems(db, compraId, productos)) return -1;
+            if (!insertPurchaseContributions(db, compraId, aportesParticipantes)) return -1;
+            if (!applyPurchaseCharge(db, compraId, descripcion, fecha, programada,
+                    cuentaId, montoCuenta)) return -1;
 
             db.setTransactionSuccessful();
             return compraId;
@@ -277,33 +257,183 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         }
     }
 
-    public List<Compra> getCompras() { return queryCompras(null); }
+    public boolean updateCompra(long compraId, String descripcion, String categoria, long fecha,
+                                boolean programada, Long cuentaId,
+                                List<ProductoCompra> productos,
+                                Map<Long, Double> aportesParticipantes) {
+        double total = calculatePurchaseTotal(productos);
+        double totalAportes = calculateContributions(aportesParticipantes);
+        if (total <= 0 || totalAportes < 0 || totalAportes > total + 0.01) return false;
+        double montoCuenta = cuentaId == null ? 0 : Math.max(0, total - totalAportes);
 
-    public List<Compra> getComprasRecientes(int limit) { return queryCompras(String.valueOf(limit)); }
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try (Cursor cursor = db.rawQuery(
+                "SELECT cuenta_id, monto_cuenta FROM compras WHERE id=?",
+                new String[]{String.valueOf(compraId)})) {
+            if (!cursor.moveToFirst()) return false;
+            Long previousAccountId = cursor.isNull(0) ? null : cursor.getLong(0);
+            double previousAccountAmount = cursor.getDouble(1);
 
-    private List<Compra> queryCompras(String limit) {
+            db.delete("movimientos", "compra_id=?", new String[]{String.valueOf(compraId)});
+            if (previousAccountId != null && previousAccountAmount > 0) {
+                adjustBalance(db, previousAccountId, previousAccountAmount);
+            }
+
+            ContentValues values = purchaseValues(
+                    descripcion, categoria, fecha, programada, cuentaId, total, montoCuenta);
+            if (db.update("compras", values, "id=?",
+                    new String[]{String.valueOf(compraId)}) == 0) return false;
+
+            db.delete("productos_compra", "compra_id=?",
+                    new String[]{String.valueOf(compraId)});
+            db.delete("deudas", "compra_id=?", new String[]{String.valueOf(compraId)});
+            if (!insertPurchaseItems(db, compraId, productos)) return false;
+            if (!insertPurchaseContributions(db, compraId, aportesParticipantes)) return false;
+            if (!applyPurchaseCharge(db, compraId, descripcion, fecha, programada,
+                    cuentaId, montoCuenta)) return false;
+
+            db.setTransactionSuccessful();
+            return true;
+        } finally {
+            db.endTransaction();
+        }
+    }
+
+    private double calculatePurchaseTotal(List<ProductoCompra> productos) {
+        double total = 0;
+        for (ProductoCompra producto : productos) total += producto.getSubtotal();
+        return total;
+    }
+
+    private double calculateContributions(Map<Long, Double> contributions) {
+        double total = 0;
+        for (double contribution : contributions.values()) {
+            if (contribution <= 0) return -1;
+            total += contribution;
+        }
+        return total;
+    }
+
+    private ContentValues purchaseValues(String descripcion, String categoria, long fecha,
+                                         boolean programada, Long cuentaId, double total,
+                                         double montoCuenta) {
+        ContentValues values = new ContentValues();
+        values.put("descripcion", descripcion);
+        values.put("fecha", fecha);
+        values.put("programada", programada ? 1 : 0);
+        values.put("categoria", categoria);
+        if (cuentaId == null) values.putNull("cuenta_id");
+        else values.put("cuenta_id", cuentaId);
+        values.put("total", total);
+        values.put("monto_cuenta", montoCuenta);
+        return values;
+    }
+
+    private boolean insertPurchaseItems(SQLiteDatabase db, long compraId,
+                                        List<ProductoCompra> productos) {
+        for (ProductoCompra producto : productos) {
+            ContentValues values = new ContentValues();
+            values.put("compra_id", compraId);
+            values.put("nombre", producto.getNombre());
+            values.put("cantidad", producto.getCantidad());
+            values.put("precio_unitario", producto.getPrecioUnitario());
+            if (db.insert("productos_compra", null, values) == -1) return false;
+        }
+        return true;
+    }
+
+    private boolean insertPurchaseContributions(SQLiteDatabase db, long compraId,
+                                                Map<Long, Double> contributions) {
+        for (Map.Entry<Long, Double> contribution : contributions.entrySet()) {
+            ContentValues values = new ContentValues();
+            values.put("compra_id", compraId);
+            values.put("contacto_id", contribution.getKey());
+            values.put("monto", contribution.getValue());
+            values.put("pagada", 0);
+            if (db.insert("deudas", null, values) == -1) return false;
+        }
+        return true;
+    }
+
+    private boolean applyPurchaseCharge(SQLiteDatabase db, long compraId, String descripcion,
+                                        long fecha, boolean programada, Long cuentaId,
+                                        double montoCuenta) {
+        if (cuentaId == null || montoCuenta <= 0) return true;
+        String movementDescription = programada
+                ? "Compra futura: " + descripcion
+                : "Compra: " + descripcion;
+        if (insertMovimientoInternal(db, cuentaId, TIPO_EGRESO, montoCuenta,
+                movementDescription, fecha, null, null, compraId) == -1) return false;
+        adjustBalance(db, cuentaId, -montoCuenta);
+        return true;
+    }
+
+    public List<Compra> getCompras() { return queryCompras(null, null, null); }
+
+    public List<Compra> getComprasRecientes(int limit) {
+        return queryCompras(null, null, String.valueOf(limit));
+    }
+
+    public Compra getCompra(long id) {
+        List<Compra> purchases = queryCompras(
+                "cp.id=?", new String[]{String.valueOf(id)}, "1");
+        return purchases.isEmpty() ? null : purchases.get(0);
+    }
+
+    private List<Compra> queryCompras(String selection, String[] selectionArgs, String limit) {
         List<Compra> compras = new ArrayList<>();
         String sql = "SELECT cp.id, cp.descripcion, cp.categoria, cp.fecha, cp.programada, cp.total, " +
+                "cp.monto_cuenta, cp.cuenta_id, " +
                 "c.nombre AS cuenta_nombre, " +
                 "(SELECT COUNT(*) FROM productos_compra pc WHERE pc.compra_id=cp.id) AS items, " +
                 "(SELECT COUNT(*) FROM deudas d WHERE d.compra_id=cp.id) AS participantes " +
                 "FROM compras cp LEFT JOIN cuentas c ON c.id=cp.cuenta_id " +
+                (selection == null ? "" : "WHERE " + selection + " ") +
                 "ORDER BY cp.fecha DESC, cp.id DESC" + (limit == null ? "" : " LIMIT " + limit);
-        try (Cursor cursor = getReadableDatabase().rawQuery(sql, null)) {
+        try (Cursor cursor = getReadableDatabase().rawQuery(sql, selectionArgs)) {
             while (cursor.moveToNext()) {
                 compras.add(new Compra(
                         cursor.getLong(0), cursor.getString(1), cursor.getString(2),
                         cursor.getLong(3), cursor.getInt(4) == 1, cursor.getDouble(5),
-                        cursor.getString(6), cursor.getInt(7), cursor.getInt(8)));
+                        cursor.getDouble(6), cursor.isNull(7) ? null : cursor.getLong(7),
+                        cursor.getString(8), cursor.getInt(9), cursor.getInt(10)));
             }
         }
         return compras;
     }
 
+    public List<ProductoCompra> getProductosCompra(long compraId) {
+        List<ProductoCompra> products = new ArrayList<>();
+        try (Cursor cursor = getReadableDatabase().query(
+                "productos_compra", new String[]{"nombre", "cantidad", "precio_unitario"},
+                "compra_id=?", new String[]{String.valueOf(compraId)},
+                null, null, "id")) {
+            while (cursor.moveToNext()) {
+                products.add(new ProductoCompra(
+                        cursor.getString(0), cursor.getInt(1), cursor.getDouble(2)));
+            }
+        }
+        return products;
+    }
+
+    public Map<Long, Double> getAportesCompra(long compraId) {
+        Map<Long, Double> contributions = new LinkedHashMap<>();
+        try (Cursor cursor = getReadableDatabase().query(
+                "deudas", new String[]{"contacto_id", "monto"},
+                "compra_id=?", new String[]{String.valueOf(compraId)},
+                null, null, "id")) {
+            while (cursor.moveToNext()) {
+                contributions.put(cursor.getLong(0), cursor.getDouble(1));
+            }
+        }
+        return contributions;
+    }
+
     public Map<String, Double> getGastosPorCategoria() {
         Map<String, Double> totals = new LinkedHashMap<>();
-        String sql = "SELECT categoria, COALESCE(SUM(total), 0) " +
-                "FROM compras WHERE programada=0 GROUP BY categoria";
+        String sql = "SELECT categoria, COALESCE(SUM(monto_cuenta), 0) " +
+                "FROM compras GROUP BY categoria";
         try (Cursor cursor = getReadableDatabase().rawQuery(sql, null)) {
             while (cursor.moveToNext()) {
                 totals.put(cursor.getString(0), cursor.getDouble(1));
@@ -344,15 +474,14 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         SQLiteDatabase db = getWritableDatabase();
         db.beginTransaction();
         try (Cursor cursor = db.rawQuery(
-                "SELECT cuenta_id, total, programada FROM compras WHERE id=?",
+                "SELECT cuenta_id, monto_cuenta FROM compras WHERE id=?",
                 new String[]{String.valueOf(id)})) {
             if (!cursor.moveToFirst()) return false;
             Long cuentaId = cursor.isNull(0) ? null : cursor.getLong(0);
-            double total = cursor.getDouble(1);
-            boolean programada = cursor.getInt(2) == 1;
+            double montoCuenta = cursor.getDouble(1);
             db.delete("movimientos", "compra_id=?", new String[]{String.valueOf(id)});
             if (db.delete("compras", "id=?", new String[]{String.valueOf(id)}) == 0) return false;
-            if (!programada && cuentaId != null) adjustBalance(db, cuentaId, total);
+            if (cuentaId != null && montoCuenta > 0) adjustBalance(db, cuentaId, montoCuenta);
             db.setTransactionSuccessful();
             return true;
         } finally {
@@ -364,7 +493,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         List<Deuda> deudas = new ArrayList<>();
         String sql = "SELECT d.id, ct.nombre, cp.descripcion, d.monto, d.pagada " +
                 "FROM deudas d JOIN contactos ct ON ct.id=d.contacto_id " +
-                "JOIN compras cp ON cp.id=d.compra_id ORDER BY d.pagada, cp.fecha DESC";
+                "JOIN compras cp ON cp.id=d.compra_id ORDER BY cp.fecha DESC, ct.nombre COLLATE NOCASE";
         try (Cursor cursor = getReadableDatabase().rawQuery(sql, null)) {
             while (cursor.moveToNext()) {
                 deudas.add(new Deuda(cursor.getLong(0), cursor.getString(1),
@@ -392,7 +521,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         try (Cursor cursor = getReadableDatabase().rawQuery(
                 "SELECT " +
                         "COALESCE((SELECT SUM(monto) FROM movimientos WHERE tipo=? AND compra_id IS NULL),0) + " +
-                        "COALESCE((SELECT SUM(total) FROM compras WHERE programada=0),0)",
+                        "COALESCE((SELECT SUM(monto_cuenta) FROM compras),0)",
                 new String[]{TIPO_EGRESO})) {
             return cursor.moveToFirst() ? cursor.getDouble(0) : 0;
         }

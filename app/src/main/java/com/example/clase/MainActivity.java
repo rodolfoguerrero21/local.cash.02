@@ -165,6 +165,8 @@ public class MainActivity extends AppCompatActivity {
 
         int[] rows = {R.id.recentPurchaseRow1, R.id.recentPurchaseRow2, R.id.recentPurchaseRow3};
         int[] names = {R.id.recentPurchaseName1, R.id.recentPurchaseName2, R.id.recentPurchaseName3};
+        int[] details = {R.id.recentPurchaseDetail1, R.id.recentPurchaseDetail2,
+                R.id.recentPurchaseDetail3};
         int[] amounts = {R.id.recentPurchaseAmount1, R.id.recentPurchaseAmount2, R.id.recentPurchaseAmount3};
         List<Compra> recent = database.getComprasRecientes(3);
         for (int index = 0; index < rows.length; index++) {
@@ -175,7 +177,12 @@ public class MainActivity extends AppCompatActivity {
             }
             Compra purchase = recent.get(index);
             row.setVisibility(View.VISIBLE);
-            ((TextView) findViewById(names[index])).setText(purchase.getDescripcion());
+            ((TextView) findViewById(names[index])).setText(purchase.isProgramada()
+                    ? getString(R.string.future_purchase_name_format, purchase.getDescripcion())
+                    : purchase.getDescripcion());
+            ((TextView) findViewById(details[index])).setText(getString(
+                    R.string.recent_purchase_detail_format,
+                    purchase.getCategoria(), UiUtils.date(purchase.getFecha())));
             ((TextView) findViewById(amounts[index])).setText(UiUtils.money(purchase.getTotal()));
         }
     }

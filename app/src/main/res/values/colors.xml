@@ -21,4 +21,6 @@
     <color name="purchase_olive">#FF7D8457</color>
     <color name="purchase_terracotta">#FFD97A4B</color>
     <color name="purchase_border">#FFE7D8C6</color>
+    <color name="purchase_future_pale">#FFFFF3D8</color>
+    <color name="purchase_future_border">#FFF0C978</color>
 </resources>
