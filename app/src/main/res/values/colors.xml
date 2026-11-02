@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="local_cash_background">#FFFDF9F3</color>
+    <color name="local_cash_surface">#FFFFFFFF</color>
+    <color name="local_cash_teal">#FF006879</color>
+    <color name="local_cash_teal_dark">#FF003E4C</color>
+    <color name="local_cash_green">#FF39B878</color>
+    <color name="local_cash_mint">#FFE4F7EF</color>
+    <color name="local_cash_mint_dark">#FFA7DFC7</color>
+    <color name="local_cash_gold">#FFF2A93B</color>
+    <color name="local_cash_teal_pale">#FFEDF7F8</color>
+    <color name="local_cash_text">#FF073A4A</color>
+    <color name="local_cash_text_secondary">#FF60747A</color>
+    <color name="local_cash_border">#FFE8E7E2</color>
+    <color name="local_cash_progress_track">#FFE8EBEC</color>
+    <color name="local_cash_danger">#FFD64545</color>
+    <color name="local_cash_danger_pale">#FFFFE9E7</color>
+    <color name="purchase_cream">#FFFFF7EC</color>
+    <color name="purchase_olive">#FF7D8457</color>
+    <color name="purchase_terracotta">#FFD97A4B</color>
+    <color name="purchase_border">#FFE7D8C6</color>
+</resources>

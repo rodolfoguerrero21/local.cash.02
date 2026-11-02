@@ -1,0 +1,13 @@
+<resources>
+    <style name="Base.Theme.Clase" parent="Theme.Material3.Light.NoActionBar">
+        <item name="colorPrimary">@color/local_cash_teal</item>
+        <item name="colorSecondary">@color/local_cash_green</item>
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">@color/local_cash_green</item>
+        <item name="android:navigationBarColor">@color/local_cash_surface</item>
+        <item name="android:statusBarColor">@color/local_cash_background</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+
+    <style name="Theme.Clase" parent="Base.Theme.Clase" />
+</resources>

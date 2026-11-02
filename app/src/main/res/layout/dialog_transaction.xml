@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingHorizontal="24dp"
+    android:paddingTop="10dp">
+
+    <Spinner android:id="@+id/transactionAccountSpinner" android:layout_width="match_parent" android:layout_height="52dp" android:contentDescription="@string/account" />
+
+    <RadioGroup android:id="@+id/transactionTypeGroup" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+        <RadioButton android:id="@+id/typeExpense" android:layout_width="wrap_content" android:layout_height="wrap_content" android:checked="true" android:text="@string/expense" />
+        <RadioButton android:id="@+id/typeIncome" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/income" />
+    </RadioGroup>
+
+    <com.google.android.material.textfield.TextInputLayout android:id="@+id/transactionDescriptionLayout" style="@style/Widget.Material3.TextInputLayout.OutlinedBox" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="@string/description">
+        <com.google.android.material.textfield.TextInputEditText android:id="@+id/transactionDescriptionInput" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="textCapSentences" />
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <com.google.android.material.textfield.TextInputLayout android:id="@+id/transactionAmountLayout" style="@style/Widget.Material3.TextInputLayout.OutlinedBox" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:hint="@string/amount" app:prefixText="$ ">
+        <com.google.android.material.textfield.TextInputEditText android:id="@+id/transactionAmountInput" android:layout_width="match_parent" android:layout_height="wrap_content" android:inputType="numberDecimal" />
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <CheckBox android:id="@+id/useLocationCheckBox" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="@string/attach_current_location" />
+</LinearLayout>
