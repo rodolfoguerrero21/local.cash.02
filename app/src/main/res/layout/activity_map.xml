@@ -98,6 +98,7 @@
         app:layout_constraintStart_toStartOf="parent">
 
         <TextView
+            android:id="@+id/mapInstructionText"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:gravity="center"

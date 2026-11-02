@@ -2,6 +2,7 @@ package com.example.clase;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
@@ -54,6 +55,8 @@ public class MapActivity extends AppCompatActivity {
     public static final String EXTRA_POINT_ID = "point_id";
     public static final String EXTRA_POINT_LATITUDE = "point_latitude";
     public static final String EXTRA_POINT_LONGITUDE = "point_longitude";
+    public static final String EXTRA_PURCHASE_LOCATION_MODE = "purchase_location_mode";
+    public static final String EXTRA_SELECTED_POINT_NAME = "selected_point_name";
     public static final long MARKET_POINT_ID = -101;
     public static final long FAIR_POINT_ID = -102;
     public static final long STORE_POINT_ID = -103;
@@ -72,6 +75,7 @@ public class MapActivity extends AppCompatActivity {
     private Icon userLocationIcon;
     private Icon newPointIcon;
     private boolean mapFeaturesReady;
+    private boolean purchaseLocationMode;
     private boolean centerOnNextLocation = true;
     private final Map<Marker, PuntoMapa> userCreatedMarkers = new HashMap<>();
     private Marker selectedUserMarker;
@@ -106,6 +110,7 @@ public class MapActivity extends AppCompatActivity {
         MapLibre.getInstance(this);
         setContentView(R.layout.activity_map);
         database = new DatabaseHelper(this);
+        purchaseLocationMode = getIntent().getBooleanExtra(EXTRA_PURCHASE_LOCATION_MODE, false);
 
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.mapRoot), (view, windowInsets) -> {
             Insets systemBars = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars());
@@ -119,6 +124,10 @@ public class MapActivity extends AppCompatActivity {
             requestUserLocation();
         });
         mapInstructionCard = findViewById(R.id.mapInstructionCard);
+        if (purchaseLocationMode) {
+            ((TextView) findViewById(R.id.mapInstructionText))
+                    .setText(R.string.purchase_map_instruction);
+        }
         pointActionsCard = findViewById(R.id.pointActionsCard);
         selectedPointName = findViewById(R.id.selectedPointName);
         findViewById(R.id.deletePointButton).setOnClickListener(view -> deleteSelectedPoint());
@@ -311,6 +320,18 @@ public class MapActivity extends AppCompatActivity {
                         pointName, point.getLatitude(), point.getLongitude());
                 if (pointId == -1) {
                     Toast.makeText(this, R.string.point_save_error, Toast.LENGTH_LONG).show();
+                    return;
+                }
+                if (purchaseLocationMode) {
+                    Intent result = new Intent();
+                    result.putExtra(EXTRA_SELECTED_POINT_NAME, pointName);
+                    result.putExtra(EXTRA_POINT_LATITUDE, point.getLatitude());
+                    result.putExtra(EXTRA_POINT_LONGITUDE, point.getLongitude());
+                    setResult(RESULT_OK, result);
+                    Toast.makeText(this, R.string.purchase_location_selected,
+                            Toast.LENGTH_SHORT).show();
+                    dialog.dismiss();
+                    finish();
                     return;
                 }
                 Marker marker = mapLibreMap.addMarker(new MarkerOptions()

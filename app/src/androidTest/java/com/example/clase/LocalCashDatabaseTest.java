@@ -13,6 +13,7 @@ import androidx.test.platform.app.InstrumentationRegistry;
 import com.example.clase.Database.DatabaseHelper;
 import com.example.clase.modelo.Compra;
 import com.example.clase.modelo.Deuda;
+import com.example.clase.modelo.Movimiento;
 import com.example.clase.modelo.ProductoCompra;
 
 import org.junit.After;
@@ -176,5 +177,33 @@ public class LocalCashDatabaseTest {
 
         assertTrue(database.deleteCompra(purchaseId));
         assertEquals(100000, database.getSaldoTotal(), 0.01);
+    }
+
+    @Test
+    public void purchaseMapLocationIsStoredInPurchaseMovement() {
+        long accountId = database.insertCuenta("Efectivo", "Efectivo", 50000);
+        long purchaseId = database.insertCompra(
+                "Salida al cine",
+                "Gastos Personales / Estilo de Vida",
+                System.currentTimeMillis(),
+                false,
+                accountId,
+                Collections.singletonList(new ProductoCompra("Entrada", 1, 12000)),
+                Collections.emptyMap(),
+                "Cine del centro",
+                -33.4489,
+                -70.6693);
+
+        assertTrue(purchaseId > 0);
+        Compra purchase = database.getCompra(purchaseId);
+        assertNotNull(purchase);
+        assertEquals("Cine del centro", purchase.getUbicacionNombre());
+        assertEquals(-33.4489, purchase.getLatitud(), 0.0001);
+        assertEquals(-70.6693, purchase.getLongitud(), 0.0001);
+
+        Movimiento movement = database.getMovimientos().get(0);
+        assertTrue(movement.getDescripcion().contains("Lugar: Cine del centro"));
+        assertEquals(-33.4489, movement.getLatitud(), 0.0001);
+        assertEquals(-70.6693, movement.getLongitud(), 0.0001);
     }
 }

@@ -1,6 +1,8 @@
 package com.example.clase;
 
 import android.app.DatePickerDialog;
+import android.app.Activity;
+import android.content.Intent;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
@@ -14,6 +16,8 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
@@ -49,6 +53,7 @@ public class PurchaseFormActivity extends AppCompatActivity {
     private TextView contactsText;
     private TextView totalText;
     private TextView accountAmountText;
+    private TextView selectedMapLocationText;
     private com.google.android.material.button.MaterialButton dateButton;
     private List<Cuenta> accounts;
     private List<Contacto> contacts;
@@ -58,6 +63,18 @@ public class PurchaseFormActivity extends AppCompatActivity {
     private final Map<Long, String> contributionValues = new LinkedHashMap<>();
     private long selectedDate = System.currentTimeMillis();
     private long editingPurchaseId = -1;
+    private String selectedLocationName;
+    private Double selectedLatitude;
+    private Double selectedLongitude;
+    private final ActivityResultLauncher<Intent> mapLocationLauncher = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(), result -> {
+                Intent data = result.getData();
+                if (result.getResultCode() != Activity.RESULT_OK || data == null) return;
+                selectedLocationName = data.getStringExtra(MapActivity.EXTRA_SELECTED_POINT_NAME);
+                selectedLatitude = data.getDoubleExtra(MapActivity.EXTRA_POINT_LATITUDE, 0);
+                selectedLongitude = data.getDoubleExtra(MapActivity.EXTRA_POINT_LONGITUDE, 0);
+                updateSelectedLocationText();
+            });
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -79,6 +96,7 @@ public class PurchaseFormActivity extends AppCompatActivity {
         contactsText = findViewById(R.id.selectedContactsText);
         totalText = findViewById(R.id.purchaseTotalText);
         accountAmountText = findViewById(R.id.purchaseAccountAmountText);
+        selectedMapLocationText = findViewById(R.id.selectedPurchaseLocationText);
         dateButton = findViewById(R.id.purchaseDateButton);
 
         List<String> accountOptions = new ArrayList<>();
@@ -99,6 +117,8 @@ public class PurchaseFormActivity extends AppCompatActivity {
         findViewById(R.id.backButton).setOnClickListener(view -> finish());
         findViewById(R.id.addPurchaseItemButton).setOnClickListener(view -> addItemRow());
         findViewById(R.id.selectContactsButton).setOnClickListener(view -> selectContacts());
+        findViewById(R.id.markPurchaseLocationButton).setOnClickListener(
+                view -> openPurchaseLocationMap());
         findViewById(R.id.savePurchaseButton).setOnClickListener(view -> savePurchase());
         dateButton.setOnClickListener(view -> selectDate());
 
@@ -156,6 +176,10 @@ public class PurchaseFormActivity extends AppCompatActivity {
         ((com.google.android.material.button.MaterialButton) findViewById(R.id.savePurchaseButton))
                 .setText(R.string.update_purchase);
         descriptionInput.setText(purchase.getDescripcion());
+        selectedLocationName = purchase.getUbicacionNombre();
+        selectedLatitude = purchase.getLatitud();
+        selectedLongitude = purchase.getLongitud();
+        updateSelectedLocationText();
         selectedDate = purchase.getFecha();
         scheduledCheckBox.setChecked(purchase.isProgramada());
         selectAccount(purchase.getCuentaId());
@@ -175,6 +199,18 @@ public class PurchaseFormActivity extends AppCompatActivity {
             contributionValues.put(contacts.get(index).getId(), editableNumber(contribution));
         }
         updateContactsText();
+    }
+
+    private void openPurchaseLocationMap() {
+        Intent intent = new Intent(this, MapActivity.class);
+        intent.putExtra(MapActivity.EXTRA_PURCHASE_LOCATION_MODE, true);
+        mapLocationLauncher.launch(intent);
+    }
+
+    private void updateSelectedLocationText() {
+        selectedMapLocationText.setText(selectedLocationName == null
+                ? getString(R.string.no_purchase_location)
+                : getString(R.string.purchase_location_format, selectedLocationName));
     }
 
     private void selectAccount(Long accountId) {
@@ -363,10 +399,12 @@ public class PurchaseFormActivity extends AppCompatActivity {
         boolean saved = editingPurchaseId == -1
                 ? database.insertCompra(description, category, selectedDate,
                         scheduledCheckBox.isChecked(), accountId, products,
-                        participantContributions) != -1
+                        participantContributions, selectedLocationName,
+                        selectedLatitude, selectedLongitude) != -1
                 : database.updateCompra(editingPurchaseId, description, category, selectedDate,
                         scheduledCheckBox.isChecked(), accountId, products,
-                        participantContributions);
+                        participantContributions, selectedLocationName,
+                        selectedLatitude, selectedLongitude);
         if (saved) {
             Toast.makeText(this, editingPurchaseId == -1
                     ? R.string.purchase_saved

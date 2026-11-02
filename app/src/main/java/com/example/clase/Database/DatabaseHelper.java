@@ -26,7 +26,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     public static final String TIPO_EGRESO = "EGRESO";
 
     private static final String DATABASE_NAME = "localcash.db";
-    private static final int DATABASE_VERSION = 5;
+    private static final int DATABASE_VERSION = 6;
 
     public DatabaseHelper(Context context) {
         this(context, DATABASE_NAME);
@@ -58,6 +58,11 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             db.execSQL("UPDATE compras SET monto_cuenta=" +
                     "CASE WHEN programada=0 THEN total ELSE 0 END");
         }
+        if (oldVersion < 6) {
+            db.execSQL("ALTER TABLE compras ADD COLUMN ubicacion_nombre TEXT");
+            db.execSQL("ALTER TABLE compras ADD COLUMN latitud REAL");
+            db.execSQL("ALTER TABLE compras ADD COLUMN longitud REAL");
+        }
         createSchema(db);
     }
 
@@ -75,7 +80,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                 "id INTEGER PRIMARY KEY AUTOINCREMENT, descripcion TEXT NOT NULL, " +
                 "fecha INTEGER NOT NULL, programada INTEGER NOT NULL DEFAULT 0, " +
                 "cuenta_id INTEGER, total REAL NOT NULL, monto_cuenta REAL NOT NULL DEFAULT 0, " +
-                "categoria TEXT NOT NULL, " +
+                "categoria TEXT NOT NULL, ubicacion_nombre TEXT, latitud REAL, longitud REAL, " +
                 "FOREIGN KEY(cuenta_id) REFERENCES cuentas(id) ON DELETE RESTRICT)");
         db.execSQL("CREATE TABLE IF NOT EXISTS productos_compra (" +
                 "id INTEGER PRIMARY KEY AUTOINCREMENT, compra_id INTEGER NOT NULL, " +
@@ -232,6 +237,15 @@ public class DatabaseHelper extends SQLiteOpenHelper {
     public long insertCompra(String descripcion, String categoria, long fecha,
                              boolean programada, Long cuentaId,
                              List<ProductoCompra> productos, Map<Long, Double> aportesParticipantes) {
+        return insertCompra(descripcion, categoria, fecha, programada, cuentaId,
+                productos, aportesParticipantes, null, null, null);
+    }
+
+    public long insertCompra(String descripcion, String categoria, long fecha,
+                             boolean programada, Long cuentaId,
+                             List<ProductoCompra> productos,
+                             Map<Long, Double> aportesParticipantes,
+                             String ubicacionNombre, Double latitud, Double longitud) {
         double total = calculatePurchaseTotal(productos);
         double totalAportes = calculateContributions(aportesParticipantes);
         if (total <= 0 || totalAportes < 0 || totalAportes > total + 0.01) return -1;
@@ -241,14 +255,15 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         db.beginTransaction();
         try {
             ContentValues purchaseValues = purchaseValues(
-                    descripcion, categoria, fecha, programada, cuentaId, total, montoCuenta);
+                    descripcion, categoria, fecha, programada, cuentaId, total, montoCuenta,
+                    ubicacionNombre, latitud, longitud);
             long compraId = db.insert("compras", null, purchaseValues);
             if (compraId == -1) return -1;
 
             if (!insertPurchaseItems(db, compraId, productos)) return -1;
             if (!insertPurchaseContributions(db, compraId, aportesParticipantes)) return -1;
             if (!applyPurchaseCharge(db, compraId, descripcion, fecha, programada,
-                    cuentaId, montoCuenta)) return -1;
+                    cuentaId, montoCuenta, ubicacionNombre, latitud, longitud)) return -1;
 
             db.setTransactionSuccessful();
             return compraId;
@@ -261,6 +276,15 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                                 boolean programada, Long cuentaId,
                                 List<ProductoCompra> productos,
                                 Map<Long, Double> aportesParticipantes) {
+        return updateCompra(compraId, descripcion, categoria, fecha, programada, cuentaId,
+                productos, aportesParticipantes, null, null, null);
+    }
+
+    public boolean updateCompra(long compraId, String descripcion, String categoria, long fecha,
+                                boolean programada, Long cuentaId,
+                                List<ProductoCompra> productos,
+                                Map<Long, Double> aportesParticipantes,
+                                String ubicacionNombre, Double latitud, Double longitud) {
         double total = calculatePurchaseTotal(productos);
         double totalAportes = calculateContributions(aportesParticipantes);
         if (total <= 0 || totalAportes < 0 || totalAportes > total + 0.01) return false;
@@ -281,7 +305,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             }
 
             ContentValues values = purchaseValues(
-                    descripcion, categoria, fecha, programada, cuentaId, total, montoCuenta);
+                    descripcion, categoria, fecha, programada, cuentaId, total, montoCuenta,
+                    ubicacionNombre, latitud, longitud);
             if (db.update("compras", values, "id=?",
                     new String[]{String.valueOf(compraId)}) == 0) return false;
 
@@ -291,7 +316,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             if (!insertPurchaseItems(db, compraId, productos)) return false;
             if (!insertPurchaseContributions(db, compraId, aportesParticipantes)) return false;
             if (!applyPurchaseCharge(db, compraId, descripcion, fecha, programada,
-                    cuentaId, montoCuenta)) return false;
+                    cuentaId, montoCuenta, ubicacionNombre, latitud, longitud)) return false;
 
             db.setTransactionSuccessful();
             return true;
@@ -317,7 +342,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
     private ContentValues purchaseValues(String descripcion, String categoria, long fecha,
                                          boolean programada, Long cuentaId, double total,
-                                         double montoCuenta) {
+                                         double montoCuenta, String ubicacionNombre,
+                                         Double latitud, Double longitud) {
         ContentValues values = new ContentValues();
         values.put("descripcion", descripcion);
         values.put("fecha", fecha);
@@ -327,6 +353,12 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         else values.put("cuenta_id", cuentaId);
         values.put("total", total);
         values.put("monto_cuenta", montoCuenta);
+        if (ubicacionNombre == null) values.putNull("ubicacion_nombre");
+        else values.put("ubicacion_nombre", ubicacionNombre);
+        if (latitud == null) values.putNull("latitud");
+        else values.put("latitud", latitud);
+        if (longitud == null) values.putNull("longitud");
+        else values.put("longitud", longitud);
         return values;
     }
 
@@ -358,13 +390,17 @@ public class DatabaseHelper extends SQLiteOpenHelper {
 
     private boolean applyPurchaseCharge(SQLiteDatabase db, long compraId, String descripcion,
                                         long fecha, boolean programada, Long cuentaId,
-                                        double montoCuenta) {
+                                        double montoCuenta, String ubicacionNombre,
+                                        Double latitud, Double longitud) {
         if (cuentaId == null || montoCuenta <= 0) return true;
         String movementDescription = programada
                 ? "Compra futura: " + descripcion
                 : "Compra: " + descripcion;
+        if (ubicacionNombre != null && !ubicacionNombre.trim().isEmpty()) {
+            movementDescription += " · Lugar: " + ubicacionNombre.trim();
+        }
         if (insertMovimientoInternal(db, cuentaId, TIPO_EGRESO, montoCuenta,
-                movementDescription, fecha, null, null, compraId) == -1) return false;
+                movementDescription, fecha, latitud, longitud, compraId) == -1) return false;
         adjustBalance(db, cuentaId, -montoCuenta);
         return true;
     }
@@ -385,7 +421,7 @@ public class DatabaseHelper extends SQLiteOpenHelper {
         List<Compra> compras = new ArrayList<>();
         String sql = "SELECT cp.id, cp.descripcion, cp.categoria, cp.fecha, cp.programada, cp.total, " +
                 "cp.monto_cuenta, cp.cuenta_id, " +
-                "c.nombre AS cuenta_nombre, " +
+                "c.nombre AS cuenta_nombre, cp.ubicacion_nombre, cp.latitud, cp.longitud, " +
                 "(SELECT COUNT(*) FROM productos_compra pc WHERE pc.compra_id=cp.id) AS items, " +
                 "(SELECT COUNT(*) FROM deudas d WHERE d.compra_id=cp.id) AS participantes " +
                 "FROM compras cp LEFT JOIN cuentas c ON c.id=cp.cuenta_id " +
@@ -397,7 +433,10 @@ public class DatabaseHelper extends SQLiteOpenHelper {
                         cursor.getLong(0), cursor.getString(1), cursor.getString(2),
                         cursor.getLong(3), cursor.getInt(4) == 1, cursor.getDouble(5),
                         cursor.getDouble(6), cursor.isNull(7) ? null : cursor.getLong(7),
-                        cursor.getString(8), cursor.getInt(9), cursor.getInt(10)));
+                        cursor.getString(8), cursor.getString(9),
+                        cursor.isNull(10) ? null : cursor.getDouble(10),
+                        cursor.isNull(11) ? null : cursor.getDouble(11),
+                        cursor.getInt(12), cursor.getInt(13)));
             }
         }
         return compras;

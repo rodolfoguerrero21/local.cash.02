@@ -119,6 +119,13 @@
     <string name="purchase_details_help">Indica el nombre, la cuenta, la categoría y la fecha.</string>
     <string name="purchase_items_help">Agrega uno o más productos o servicios.</string>
     <string name="shared_expense_help">Selecciona participantes e indica cuánto aportará cada uno.</string>
+    <string name="purchase_location_section">Lugar de la compra</string>
+    <string name="purchase_location_help">Marca en el mapa el lugar donde comprarás o realizarás la actividad.</string>
+    <string name="mark_purchase_location">Marcar en el mapa</string>
+    <string name="no_purchase_location">No se ha seleccionado un lugar.</string>
+    <string name="purchase_location_format">Lugar seleccionado: %1$s</string>
+    <string name="purchase_location_selected">Lugar agregado a la compra</string>
+    <string name="purchase_map_instruction">Mantén presionado el mapa, escribe el nombre del lugar y guarda para volver a la compra.</string>
     <string name="purchase_summary">Resumen de la compra</string>
     <string name="purchase_category">Categoría</string>
     <string name="category_food">Alimentación</string>
