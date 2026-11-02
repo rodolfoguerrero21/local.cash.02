@@ -112,4 +112,3 @@ app/src/androidTest/java/com/example/clase/LocalCashDatabaseTest.java
 ```
 
 Esta prueba comprueba cuentas, movimientos, compras, categorías, deudas y puntos del mapa utilizando una base SQLite temporal.
-
